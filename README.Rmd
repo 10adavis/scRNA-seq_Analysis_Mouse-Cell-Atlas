@@ -1,0 +1,73 @@
+---
+title: "README"
+author: "Andrew Davis"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: TRUE
+---
+
+## Overview
+
+This directory contains an exploratory analysis of 
+
+## Metadata:
+
+
+## Input Data
+
+The [](Input_data/a) was sent to me by ___ on //.
+
+
+## Analysis pipeline:
+
+1. 
+
+
+
+## Output:
+
+The remaining output files were saved to the "Results" and folder in this repository.
+
+```{r, echo=FALSE}
+list.files(path="Results")
+```
+
+## Required Libraries
+
+These analyses were performed in RStudio 3.5.0 using (in alphabetical order):
+
+* dplyr `r packageVersion("dplyr")`
+
+
+All of the above are available from [CRAN](https://cran.r-project.org) or [Bioconductor](https://bioconductor.org/)
+
+## Mechanics
+
+The analysis in this project proceeds by running the Rmd files in R in numerical sequence
+
+The Rmd scripts are as follows:
+
+```{r, echo=FALSE}
+list.files(path="R_scripts")
+```
+
+
+## Summary: 
+
+## To do list:
+
+1. Check genes for differential expression in the Uniderma ex vivo and clinical datasets.
+2. Present findings to rest of team.
+
+### Session information
+
+```{r session_info}
+sessionInfo()
+```
+
+This document was processed on: `r Sys.Date()`.
+
+
+
+

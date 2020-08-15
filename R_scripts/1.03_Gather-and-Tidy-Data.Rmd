@@ -1,0 +1,164 @@
+---
+title: "1_Gather-and-Tidy-Data"
+author:
+- Andrew Davis, PhD, Unilever Human Biology
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  rmarkdown::html_document:
+    toc: TRUE
+---
+
+### Install/Load dependencies
+```{r, echo=TRUE, message=FALSE, Loading_Dependencies_1}
+# Install cran packages
+list.of.packages <- c("dplyr","data.table","readxl")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+# Install Bioconductor packages
+bioc.packages <- c("fgsea")
+new.bioc.packages <- bioc.packages[!(bioc.packages %in% installed.packages()[,"Package"])]
+if(length(new.bioc.packages)) BiocManager::install(new.bioc.packages)
+
+# Load dependencies:
+library(dplyr)
+library(readxl)
+library(data.table)
+library('fgsea')
+library(biomaRt)
+```
+
+
+### Read-in ECM gene sets:
+```{r} 
+# Create a list of the files from the directory containing the GMT files
+file_list <- list.files(path="../Input_Data/ECM_Collagen_Pathways")
+setwd("../Input_Data/ECM_Collagen_Pathways")
+
+select_sets <- gmtPathways(file_list[1])
+
+#had to specify columns to get rid of the total column
+for (i in 2:length(file_list)){
+  temp_data <- gmtPathways(file_list[i])
+  select_sets <- as.list(c(select_sets, temp_data))
+}
+
+# Combine and remove duplicates
+Merged_ECM_Genes<-as.vector(unique(unlist(select_sets)))
+
+mart<-biomaRt::useDataset(dataset="hsapiens_gene_ensembl",mart=useMart("ENSEMBL_MART_ENSEMBL",host="www.ensembl.org"))
+# Get gene descriptions:
+annotated_ECM_genes<-biomaRt::getBM(attributes = c("hgnc_symbol","description"),filters="hgnc_symbol",values=Merged_ECM_Genes,mart=mart)
+colnames(annotated_ECM_genes)[1]<-"gene_name"
+```
+
+
+### Read-in differential gene expression values from ex vivo RNA-seq and organize:
+```{r}
+# Read in Ex vivo RNA-seq data
+Ex_Vivo_RNAseq_DEG <- read_xlsx("../Input_Data/Exvivo_Uniderma_RNASeq_differential_list.xlsx",sheet="All")
+
+# Subset for log2FC and FDR:
+Ex_Vivo_RNAseq_DEG_ECM <- Ex_Vivo_RNAseq_DEG[,c(6,10:17)]
+# Remove duplicate gene names:
+Ex_Vivo_RNAseq_DEG_ECM <- as.data.frame(distinct(Ex_Vivo_RNAseq_DEG_ECM, gene_name, .keep_all = TRUE))
+
+# set rownames as the gene name:
+row.names(Ex_Vivo_RNAseq_DEG_ECM)<-Ex_Vivo_RNAseq_DEG_ECM$gene_name
+Ex_Vivo_RNAseq_DEG_ECM<-Ex_Vivo_RNAseq_DEG_ECM[,c(2:9)]
+
+# subset for ECM genes:
+Ex_Vivo_RNAseq_DEG_ECM <- Ex_Vivo_RNAseq_DEG_ECM[Merged_ECM_Genes,]
+
+# Subset each comparison:
+
+# Remove NA and fix column
+filter_columns<-function(DEG){
+setDT(DEG, keep.rownames = "gene_name")[]
+colnames(DEG)[c(2,3)]<-c("logFC","adj.P.Val")
+DEG<- as.data.frame(transform(DEG, adj.P.Val = as.numeric(adj.P.Val)))
+DEG_filter<-as.data.frame(subset(DEG, !is.na(adj.P.Val)))
+return(DEG_filter)
+}
+
+B3_DEG <- Ex_Vivo_RNAseq_DEG_ECM[,c(1,5)]
+B3_DEG<-filter_columns(B3_DEG)
+
+HR_DEG <-Ex_Vivo_RNAseq_DEG_ECM[,c(2,6)]
+HR_DEG<-filter_columns(HR_DEG)
+
+RPC_DEG <-Ex_Vivo_RNAseq_DEG_ECM[,c(4,8)]
+RPC_DEG<-filter_columns(RPC_DEG)
+
+Uniderma_DEG<-Ex_Vivo_RNAseq_DEG_ECM[,c(3,7)]
+Uniderma_DEG<-filter_columns(Uniderma_DEG)
+
+```
+
+### Read-in differential gene expression values from SKN_BIO_3232
+```{r}
+# Read in clinical data
+Simple_wk1 <- read_xlsx("../Input_Data/SKN-BIO-3232 DEG by cell subject-regressed.xlsx",sheet="Cell3 Wk1-Bl")
+Simple_wk2 <- read_xlsx("../Input_Data/SKN-BIO-3232 DEG by cell subject-regressed.xlsx",sheet="Cell3 Wk2-Bl")
+Renova_wk1 <- read_xlsx("../Input_Data/SKN-BIO-3232 DEG by cell subject-regressed.xlsx",sheet="Cell1 Wk1-Bl")
+Renova_wk2 <- read_xlsx("../Input_Data/SKN-BIO-3232 DEG by cell subject-regressed.xlsx",sheet="Cell1 Wk2-Bl")
+Uniderma_wk1 <- read_xlsx("../Input_Data/SKN-BIO-3232 DEG by cell subject-regressed.xlsx",sheet="Cell2 Wk1-Bl")
+Uniderma_wk2 <- read_xlsx("../Input_Data/SKN-BIO-3232 DEG by cell subject-regressed.xlsx",sheet="Cell2 Wk2-Bl")
+
+# Make function to filter each comparison
+filter_ECM<-function(DEG){
+# Remove duplicate gene names:
+DEG <- as.data.frame(distinct(DEG, Gene.symbol, .keep_all = TRUE))
+# set rownames as the gene name:
+row.names(DEG)<-DEG$Gene.symbol
+DEG<-DEG[,c(2:5)]
+# subset for ECM genes:
+DEG_ECM <- DEG[Merged_ECM_Genes,]
+setDT(DEG_ECM, keep.rownames = "gene_name")[]
+return(DEG_ECM)
+}
+
+# Filter each comparison for ECM genes:
+Simple_wk1_ECM<-filter_ECM(Simple_wk1)
+Simple_wk2_ECM<-filter_ECM(Simple_wk2)
+Renova_wk1_ECM<-filter_ECM(Renova_wk1)
+Renova_wk2_ECM<-filter_ECM(Renova_wk2)
+Uniderma_wk1_ECM<-filter_ECM(Uniderma_wk1)
+Uniderma_wk2_ECM<-filter_ECM(Uniderma_wk2)
+```
+
+### Read-in differential gene expression values from matrix stiffness RNAseq (LIMSS20457)
+```{r}
+# Read in clinical data
+Matrix_RNAseq_DEG <- read.csv("../Input_Data/logFC_TMM-CPM_all_Comparisons_protein_coding.csv")
+
+# Subset for log2FC and FDR:
+Matrix_RNAseq_DEG_ECM <- Matrix_RNAseq_DEG[,c(3,6,11)]
+# Change column names:
+colnames(Matrix_RNAseq_DEG_ECM)<-c("gene_name","log2FC.retinol.vehicle.2kPa","log2FC.retinol.vehicle.50kPa")
+
+# Remove duplicate gene names:
+Matrix_RNAseq_DEG_ECM <- as.data.frame(distinct(Matrix_RNAseq_DEG_ECM, gene_name, .keep_all = TRUE))
+
+# set rownames as the gene name:
+row.names(Matrix_RNAseq_DEG_ECM)<-Matrix_RNAseq_DEG_ECM$gene_name
+Matrix_RNAseq_DEG_ECM<-Matrix_RNAseq_DEG_ECM[,c(2:3)]
+
+# subset for ECM genes:
+Matrix_RNAseq_DEG_ECM <- Matrix_RNAseq_DEG_ECM[Merged_ECM_Genes,]
+
+# Read in matrix stiffness RNA-seq
+Retinol_2kPa_vehicle <- as.data.frame(Matrix_RNAseq_DEG_ECM[,1,drop=FALSE])
+Retinol_2kPa_vehicle[,2]<-row.names(Retinol_2kPa_vehicle)
+colnames(Retinol_2kPa_vehicle)<-c("logFC","gene_name")
+
+Retinol_50kPa_vehicle <- as.data.frame(Matrix_RNAseq_DEG_ECM[,2,drop=FALSE])
+Retinol_50kPa_vehicle[,2]<-row.names(Retinol_50kPa_vehicle)
+colnames(Retinol_50kPa_vehicle)<-c("logFC","gene_name")
+
+
+```
+
+
+
+
